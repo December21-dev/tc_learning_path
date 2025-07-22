@@ -7,30 +7,27 @@ on:
 permissions:
   issues: write
   contents: read
-  pull-requests: write
 
 jobs:
   assign-issue:
     runs-on: ubuntu-latest
     if: contains(github.event.comment.body, '@assign')
     steps:
-      - name: Install GitHub CLI
+      - name: Authenticate GitHub CLI
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gh
+          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
 
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Assign issue and move to project column
+      - name: Assign issue to commenter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ASSIGNEE: ${{ github.event.comment.user.login }}
+          REPO: ${{ github.repository }}
         run: |
-          # Assign the issue to the user who commented
-          gh issue edit "$ISSUE_NUMBER" --add-assignee "$ASSIGNEE"
-
-          # Move the issue to the "In Progress" column if a project is linked
-          gh project item move --issue "$ISSUE_NUMBER" --column "In Progress" || echo "No linked project to move the issue to."
-        shell: bash
+          # Directly try to assign the issue and capture the result
+          if gh issue edit "$ISSUE_NUMBER" --repo "$REPO" --add-assignee "$ASSIGNEE"; then
+            echo "Issue #$ISSUE_NUMBER successfully assigned to $ASSIGNEE"
+          else
+            gh issue comment "$ISSUE_NUMBER" --repo "$REPO" --body "⚠️ There was a problem assigning @$ASSIGNEE to this issue. Please check if you have sufficient permissions."
+            exit 1
+          fi
